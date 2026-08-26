@@ -299,8 +299,10 @@ static bool appendMeshlet(meshopt_Meshlet& meshlet, unsigned int a, unsigned int
 	return result;
 }
 
-static unsigned int getNeighborTriangle(const meshopt_Meshlet& meshlet, const Cone& meshlet_cone, const unsigned int* meshlet_vertices, const unsigned int* indices, const TriangleAdjacency2& adjacency, const Cone* triangles, const unsigned int* live_triangles, const short* used, float meshlet_expected_radius, float cone_weight)
+static unsigned int getNeighborTriangle(const meshopt_Meshlet& meshlet, const Cone& meshlet_cone, const unsigned int* meshlet_vertices, const unsigned int* indices, const TriangleAdjacency2& adjacency, const Cone* triangles, const unsigned int* live_triangles, const short* used, unsigned int* triangle_seen, unsigned int triangle_stamp, float meshlet_expected_radius, float cone_weight)
 {
+	assert(triangle_stamp != 0);
+
 	unsigned int best_triangle = ~0u;
 	int best_priority = 5;
 	float best_score = FLT_MAX;
@@ -315,6 +317,10 @@ static unsigned int getNeighborTriangle(const meshopt_Meshlet& meshlet, const Co
 		for (size_t j = 0; j < neighbors_size; ++j)
 		{
 			unsigned int triangle = neighbors[j];
+			if (triangle_seen[triangle] == triangle_stamp)
+				continue;
+			triangle_seen[triangle] = triangle_stamp;
+
 			unsigned int a = indices[triangle * 3 + 0], b = indices[triangle * 3 + 1], c = indices[triangle * 3 + 2];
 
 			int extra = (used[a] < 0) + (used[b] < 0) + (used[c] < 0);
@@ -1064,6 +1070,8 @@ size_t meshopt_buildMeshletsFlex(meshopt_Meshlet* meshlets, unsigned int* meshle
 
 	unsigned char* emitted_flags = allocator.allocate<unsigned char>(face_count);
 	memset(emitted_flags, 0, face_count);
+	unsigned int* triangle_seen = allocator.allocate<unsigned int>(face_count);
+	memset(triangle_seen, 0, face_count * sizeof(unsigned int));
 
 	// for each triangle, precompute centroid & normal to use for scoring
 	Cone* triangles = allocator.allocate<Cone>(face_count);
@@ -1123,6 +1131,7 @@ size_t meshopt_buildMeshletsFlex(meshopt_Meshlet* meshlets, unsigned int* meshle
 	size_t meshlet_offset = 0;
 
 	Cone meshlet_cone_acc = {};
+	unsigned int triangle_stamp = 0;
 
 	for (;;)
 	{
@@ -1135,7 +1144,7 @@ size_t meshopt_buildMeshletsFlex(meshopt_Meshlet* meshlets, unsigned int* meshle
 		if (meshlet_offset == 0 && meshlet.triangle_count == 0)
 			best_triangle = initial_seed;
 		else
-			best_triangle = getNeighborTriangle(meshlet, meshlet_cone, meshlet_vertices, indices, adjacency, triangles, live_triangles, used, meshlet_expected_radius, cone_weight);
+			best_triangle = getNeighborTriangle(meshlet, meshlet_cone, meshlet_vertices, indices, adjacency, triangles, live_triangles, used, triangle_seen, ++triangle_stamp, meshlet_expected_radius, cone_weight);
 
 		bool split = false;
 
